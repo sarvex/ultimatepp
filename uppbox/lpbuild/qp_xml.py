@@ -22,7 +22,7 @@ try:
 except ImportError:
   from xml.parsers import pyexpat
 
-error = __name__ + '.error'
+error = f'{__name__}.error'
 
 
 #
@@ -43,24 +43,18 @@ class Parser:
         return elem.ns_scope[prefix]
       elem = elem.parent
 
-    if prefix == '':
-      return ''		# empty URL for "no namespace"
-
-    return None
+    return '' if prefix == '' else None
 
   def process_prefix(self, name, use_default):
     idx = string.find(name, ':')
     if idx == -1:
-      if use_default:
-        return self.find_prefix(''), name
-      return '', name	# no namespace
-
+      return (self.find_prefix(''), name) if use_default else ('', name)
     if string.lower(name[:3]) == 'xml':
       return '', name	# name is reserved by XML. don't break out a NS.
 
     ns = self.find_prefix(name[:idx])
     if ns is None:
-      raise error, 'namespace prefix ("%s") not found' % name[:idx]
+      raise (error, f'namespace prefix ("{name[:idx]}") not found')
 
     return ns, name[idx+1:]
 
@@ -185,10 +179,10 @@ class _element:
     return s
 
   def find(self, name, ns=''):
-    for elem in self.children:
-      if elem.name == name and elem.ns == ns:
-        return elem
-    return None
+    return next(
+        (elem for elem in self.children if elem.name == name and elem.ns == ns),
+        None,
+    )
 
 
 def _clean_tree(elem):
@@ -218,25 +212,25 @@ def _dump_recurse(f, elem, namespaces, lang=None, dump_ns=0):
   if elem.ns:
     f.write('<ns%d:%s' % (namespaces[elem.ns], elem.name))
   else:
-    f.write('<' + elem.name)
+    f.write(f'<{elem.name}')
   for (ns, name), value in elem.attrs.items():
     if ns:
       f.write(' ns%d:%s="%s"' % (namespaces[ns], name, value))
     else:
-      f.write(' %s="%s"' % (name, value))
+      f.write(f' {name}="{value}"')
   if dump_ns:
     for ns, id in namespaces.items():
       f.write(' xmlns:ns%d="%s"' % (id, ns))
   if elem.lang != lang:
-    f.write(' xml:lang="%s"' % elem.lang)
+    f.write(f' xml:lang="{elem.lang}"')
   if elem.children or elem.first_cdata:
-    f.write('>' + elem.first_cdata)
+    f.write(f'>{elem.first_cdata}')
     for child in elem.children:
       _dump_recurse(f, child, namespaces, elem.lang)
       f.write(child.following_cdata)
     if elem.ns:
       f.write('</ns%d:%s>' % (namespaces[elem.ns], elem.name))
     else:
-      f.write('</%s>' % elem.name)
+      f.write(f'</{elem.name}>')
   else:
     f.write('/>')

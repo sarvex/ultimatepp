@@ -94,84 +94,69 @@ def attr(e, n):
   return e.attrs[("", n)]
 
 def has_child(e, n):
-  for c in e.children:
-    if c.name == n: return 1
-  return 0
+    return next((1 for c in e.children if c.name == n), 0)
 
 def child(e, n):
-  for c in e.children:
-    if c.name == n: return c
-  die("<%s> doesn't have <%s> child" % (e.name, n))
+    for c in e.children:
+      if c.name == n: return c
+    die(f"<{e.name}> doesn't have <{n}> child")
   
 def convert_path(n):
-  for src in reloc.keys():
-    n = string.replace(n, src, reloc[src])
-  if kill_prefix_rx != None:
-    if kill_prefix_rx.search(n):
-      n = kill_prefix_rx.sub("", n)
-    else:
-      return None
-  if n.startswith("/"): n = n[1:]
-  if n == "": n = "/"
-  for pref in exclude:
-    if n.startswith(pref):
-      return None
-  if include:
-    inc=False;
-    for pref in include:
+    for src in reloc.keys():
+      n = string.replace(n, src, reloc[src])
+    if kill_prefix_rx != None:
+      if kill_prefix_rx.search(n):
+        n = kill_prefix_rx.sub("", n)
+      else:
+        return None
+    if n.startswith("/"): n = n[1:]
+    if n == "": n = "/"
+    for pref in exclude:
       if n.startswith(pref):
-        inc=True
-  else:
-    inc=True
-  if inc:
-    return n
-  else:
-    return None
+        return None
+    if include:
+      inc=False;
+      for pref in include:
+        if n.startswith(pref):
+          inc=True
+    else:
+      inc=True
+    return n if inc else None
 
 def convert_user(u):
-  if no_author == False:
+    if no_author != False:
+        return ''
     if users.has_key(u):
-      return users[u]
+        return users[u]
     else:
-      if no_host:
-        return u + ":"   
-      else:
-        return "%s <%s@%s>" % (u, u, default_domain)
-  else:
-    return ''
+        return f"{u}:" if no_host else f"{u} <{u}@{default_domain}>"
 
 def wrap_text_line(str, pref, width):
-  ret = u""
-  line = u""
-  first_line = True
-  for word in str.split():
-    if line == u"":
-      line = word
-    else:
-      if len(line + u" " + word) > width:
-        if first_line:
-          ret += line + u"\n"
-          first_line = False
-          line = word
+    ret = u""
+    line = u""
+    first_line = True
+    for word in str.split():
+        if line == u"":
+            line = word
+        elif len(f"{line} {word}") > width:
+            if first_line:
+                ret += line + u"\n"
+                first_line = False
+            else:
+                ret += pref + line + u"\n"
+            line = word
         else:
-          ret += pref + line + u"\n"
-          line = word
-      else:
-        line += u" " + word
-  if first_line:
-    ret += line + u"\n"
-  else:
-    ret += pref + line + u"\n"
-  return ret
+            line += f" {word}"
+    ret += line + u"\n" if first_line else pref + line + u"\n"
+    return ret
 
 def wrap_text(str, pref, width):
-  if not list_format:
-    return wrap_text_line(str,pref,width)
-  else:
+    if not list_format:
+        return wrap_text_line(str,pref,width)
     items = re.split(r"\-\s+",str)
     ret = wrap_text_line(items[0],pref,width)
     for item in items[1:]:
-      ret += pref + u"- " + wrap_text_line(item,pref+"  ",width)
+        ret += f'{pref}- {wrap_text_line(item, f"{pref}  ", width)}'
     return ret
 
 class Entry:
@@ -189,89 +174,82 @@ class Entry:
     self.msg += other.msg
 
   def dump(self, out):
-    if len(self.msg) > 0:
-      if date_only == False:
-        tformat = "%a, %d %b %Y %H:%M:%S +0000"
-      else:
-        tformat = "%Y-%m-%d"
-
-      if self.rev != self.beg_rev:
-        out.write("%s (r%s-%s) %s; urgency=%s\n\n" % (pkg, self.rev, self.beg_rev, distro, urgency))
-      else:
-        out.write("%s (r%s) %s; urgency=%s\n\n" % (pkg, self.rev, distro, urgency))
-        #~ out.write("%s (r%s)  %s\n\n" % \
-                          #~ (time.strftime(tformat, time.localtime(self.beg_tm)), \
-                           #~ self.rev, convert_user(self.author)))
-      out.write(self.msg)
-      out.write(" -- %s  %s\n\n" % (convert_user(self.author),time.strftime(tformat, time.localtime(self.beg_tm))))
+      if len(self.msg) > 0:
+          tformat = "%a, %d %b %Y %H:%M:%S +0000" if date_only == False else "%Y-%m-%d"
+          if self.rev != self.beg_rev:
+            out.write("%s (r%s-%s) %s; urgency=%s\n\n" % (pkg, self.rev, self.beg_rev, distro, urgency))
+          else:
+            out.write("%s (r%s) %s; urgency=%s\n\n" % (pkg, self.rev, distro, urgency))
+            #~ out.write("%s (r%s)  %s\n\n" % \
+                              #~ (time.strftime(tformat, time.localtime(self.beg_tm)), \
+                               #~ self.rev, convert_user(self.author)))
+          out.write(self.msg)
+          out.write(" -- %s  %s\n\n" % (convert_user(self.author),time.strftime(tformat, time.localtime(self.beg_tm))))
   
   def can_join(self, other):
     return self.author == other.author and abs(self.tm - other.tm) < max_join_delta
 
 def process_entry(e):
-  rev = attr(e, "revision")
-  if has_child(e, "author"):
-    author = child(e, "author").textof()
-  else:
-    author = "anonymous"
-  m = date_rx.search(child(e, "date").textof())
-  msg = ' ' + child(e, "msg").textof()
-  if first_line_only:
-    #msg = msg.split('\n')[0] # inefficient but quick to implement!
-    iend = string.find(msg, '\n')
-    if iend > 0:
-        msg = msg[:iend]
-  if strip == True:
-    ibegin = string.find(msg, "/*")
-    if ibegin > 0:
-      iend = string.find(msg, "*/") + 2
-      msg = msg[0:ibegin] + msg[iend:]
+    rev = attr(e, "revision")
+    author = child(e, "author").textof() if has_child(e, "author") else "anonymous"
+    m = date_rx.search(child(e, "date").textof())
+    msg = ' ' + child(e, "msg").textof()
+    if first_line_only:
+      #msg = msg.split('\n')[0] # inefficient but quick to implement!
+      iend = string.find(msg, '\n')
+      if iend > 0:
+          msg = msg[:iend]
+    if strip == True:
+        ibegin = string.find(msg, "/*")
+        if ibegin > 0:
+            iend = string.find(msg, "*/") + 2
+            msg = msg[:ibegin] + msg[iend:]
 
-  if m:
-    tm = time.mktime(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
-  else:
-    die("evil date: %s" % child(e, "date").textof())
-  paths = []
-  if len(msg) > 1: 
-    for path in child(e, "paths").children:
-      if path.name != "path": die("<paths> has non-<path> child")
-      nam = convert_path(path.textof())
-      if nam != None:
-        if attr(path, "action") == "D":
-          paths.append(nam + " (removed)")
-        elif attr(path, "action") == "A":
-          paths.append(nam + " (added)")
-        else:
-          paths.append(nam)
-     
-    if paths != [] and no_files == False:
-      return Entry(tm, rev, author, "    * %s\n" % wrap_text(", ".join(paths) + ": " + msg, "      ", 65))
-    elif paths != [] and no_files == True:
-      return Entry(tm, rev, author, "    * %s\n" % wrap_text(msg, "      ", 65))
+    if m:
+        tm = time.mktime(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
+    else:
+        die(f'evil date: {child(e, "date").textof()}')
+    paths = []
+    if len(msg) > 1: 
+        for path in child(e, "paths").children:
+            if path.name != "path": die("<paths> has non-<path> child")
+            nam = convert_path(path.textof())
+            if nam != None:
+                if attr(path, "action") == "D":
+                    paths.append(f"{nam} (removed)")
+                elif attr(path, "action") == "A":
+                    paths.append(f"{nam} (added)")
+                else:
+                    paths.append(nam)
 
-  return None
+        if paths != [] and no_files == False:
+          return Entry(tm, rev, author, "    * %s\n" % wrap_text(", ".join(paths) + ": " + msg, "      ", 65))
+        elif paths != [] and no_files == True:
+          return Entry(tm, rev, author, "    * %s\n" % wrap_text(msg, "      ", 65))
+
+    return None
 
 def process(fin, fout):
-  parser = qp_xml.Parser()
-  root = parser.parse(fin)
+    parser = qp_xml.Parser()
+    root = parser.parse(fin)
 
-  if root.name != "log": die("root is not <log>")
-  
-  cur = None
-  
-  for logentry in root.children:
-    if logentry.name != "logentry": die("non <logentry> <log> child")
-    e = process_entry(logentry)
-    if e != None:
-      if cur != None:
-        if cur.can_join(e):
-          cur.join(e)
-        else:
-          cur.dump(fout)
-          cur = e
-      else: cur = e
-        
-  if cur != None: cur.dump(fout)
+    if root.name != "log": die("root is not <log>")
+
+    cur = None
+
+    for logentry in root.children:
+        if logentry.name != "logentry": die("non <logentry> <log> child")
+        e = process_entry(logentry)
+        if e != None:
+            if cur is None:
+                cur = e
+
+            elif cur.can_join(e):
+                cur.join(e)
+            else:
+                cur.dump(fout)
+                cur = e
+    if cur != None: cur.dump(fout)
 
 def usage():
   sys.stderr.write(\
@@ -329,78 +307,78 @@ def utf_open(name, mode):
   return codecs.open(name, mode, encoding="utf-8", errors="replace")
 
 def process_opts():
-  try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], "o:u:p:x:d:r:d,i:D:P:S:U:FhsOLHA1", 
-                                   ["users=", "prefix=", "domain=", "delta=",
-                                    "exclude=", "help", "output=", "relocate=",
-                                    "list-format","strip-comments", "only-date", "no-files",
-                                    "no-host", "no-author", "first-line-only",
-                                    "package=", "distribution=","urgency=","--include-only="])
-  except getopt.GetoptError:
-    usage()
-    sys.exit(2)
-  fin = sys.stdin
-  fout = None
-  global kill_prefix_rx, exclude, include, users, default_domain, reloc, max_join_delta, list_format, strip, date_only, no_files, no_host, no_author, first_line_only, pkg, distro, urgency
-  for o, a in opts:
-    if o in ("--prefix", "-p"):
-      kill_prefix_rx = re.compile("^" + a)
-    elif o in ("--exclude", "-x"):
-      w=a.split(",")
-      exclude=exclude+w
-    elif o in ("--include-only", "-i"):
-      w=a.split(",")
-      include=include+w
-    elif o in ("--help", "-h"):
-      usage()
-      sys.exit(0)
-    elif o in ("--output", "-o"):
-      fout = utf_open(a, "w")
-    elif o in ("--domain", "-d"):
-      default_domain = a
-    elif o in ("--strip-comments", "-s"):
-      strip = True
-    elif o in ("--only-date", "-O"):
-      date_only = True
-    elif o in ("--no-files", "-L"):
-      no_files = True
-    elif o in ("--no-host", "-H"):
-      no_host = True
-    elif o in ("--no-author", "-A"):
-      no_author = True
-    elif o in ("--first-line-only", "-1"):
-      first_line_only = True
-    elif o in ("--users", "-u"):
-      f = utf_open(a, "r")
-      for line in f.xreadlines():
-        w = line.split()
-        if len(line) < 1 or line[0] == '#' or len(w) < 2: 
-          continue
-        users[w[0]] = " ".join(w[1:])
-    elif o in ("--relocate", "-r"):
-      (src, target) = a.split("=")
-      reloc[src] = target
-    elif o in ("--delta", "-D"):
-      max_join_delta = int(a)
-    elif o in ("--list-format", "-F"):
-      list_format = True
-    elif o in ("--package", "-P"):
-      pkg = a
-    elif o in ("--distribution", "-S"):
-      distro = a
-    elif o in ("--urgency", "-U"):
-      urgency = a
-    else:
+    try:
+      opts, args = getopt.gnu_getopt(sys.argv[1:], "o:u:p:x:d:r:d,i:D:P:S:U:FhsOLHA1", 
+                                     ["users=", "prefix=", "domain=", "delta=",
+                                      "exclude=", "help", "output=", "relocate=",
+                                      "list-format","strip-comments", "only-date", "no-files",
+                                      "no-host", "no-author", "first-line-only",
+                                      "package=", "distribution=","urgency=","--include-only="])
+    except getopt.GetoptError:
       usage()
       sys.exit(2)
-  if len(args) > 1:
-    usage()
-    sys.exit(2)
-  if len(args) == 1:
-    fin = open(args[0], "r")
-  if fout == None:
-    fout = utf_open("ChangeLog", "w")
-  process(fin, fout)
+    fin = sys.stdin
+    fout = None
+    global kill_prefix_rx, exclude, include, users, default_domain, reloc, max_join_delta, list_format, strip, date_only, no_files, no_host, no_author, first_line_only, pkg, distro, urgency
+    for o, a in opts:
+        if o in ("--prefix", "-p"):
+            kill_prefix_rx = re.compile(f"^{a}")
+        elif o in ("--exclude", "-x"):
+          w=a.split(",")
+          exclude=exclude+w
+        elif o in ("--include-only", "-i"):
+          w=a.split(",")
+          include=include+w
+        elif o in ("--help", "-h"):
+          usage()
+          sys.exit(0)
+        elif o in ("--output", "-o"):
+          fout = utf_open(a, "w")
+        elif o in ("--domain", "-d"):
+          default_domain = a
+        elif o in ("--strip-comments", "-s"):
+          strip = True
+        elif o in ("--only-date", "-O"):
+          date_only = True
+        elif o in ("--no-files", "-L"):
+          no_files = True
+        elif o in ("--no-host", "-H"):
+          no_host = True
+        elif o in ("--no-author", "-A"):
+          no_author = True
+        elif o in ("--first-line-only", "-1"):
+          first_line_only = True
+        elif o in ("--users", "-u"):
+          f = utf_open(a, "r")
+          for line in f.xreadlines():
+            w = line.split()
+            if len(line) < 1 or line[0] == '#' or len(w) < 2: 
+              continue
+            users[w[0]] = " ".join(w[1:])
+        elif o in ("--relocate", "-r"):
+          (src, target) = a.split("=")
+          reloc[src] = target
+        elif o in ("--delta", "-D"):
+          max_join_delta = int(a)
+        elif o in ("--list-format", "-F"):
+          list_format = True
+        elif o in ("--package", "-P"):
+          pkg = a
+        elif o in ("--distribution", "-S"):
+          distro = a
+        elif o in ("--urgency", "-U"):
+          urgency = a
+        else:
+            usage()
+            sys.exit(2)
+    if len(args) > 1:
+      usage()
+      sys.exit(2)
+    if len(args) == 1:
+      fin = open(args[0], "r")
+    if fout is None:
+        fout = utf_open("ChangeLog", "w")
+    process(fin, fout)
 
 if __name__ == "__main__":
   os.environ['TZ'] = 'UTC'
